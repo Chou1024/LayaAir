@@ -1,6 +1,9 @@
 import { IClone } from "./laya/d3/core/IClone"
 import { Vector3 } from "./laya/d3/math/Vector3"
 import { PBRRenderQuality } from "./laya/d3/core/material/PBRRenderQuality";
+import { Physics3D } from "./laya/d3/physics/Physics3D";
+import { ILaya3D } from "./ILaya3D";
+import { CannonPhysicsSettings } from "./laya/d3/physicsCannon/CannonPhysicsSettings";
 
 /**
  * <code>Config3D</code> 类用于创建3D初始化配置。
@@ -9,6 +12,17 @@ export class Config3D implements IClone {
 	/**@internal*/
 	static _config: Config3D = new Config3D();
 
+
+	static get useCannonPhysics():boolean{
+		return Config3D._config.isUseCannonPhysicsEngine;
+	}
+	static set useCannonPhysics(value:boolean){
+		Config3D._config.isUseCannonPhysicsEngine = value;
+		if(value) {
+			Physics3D.__cannoninit__();
+			if(!ILaya3D.Scene3D.cannonPhysicsSettings) ILaya3D.Scene3D.cannonPhysicsSettings = new CannonPhysicsSettings();
+		}	
+	}
 	/**@internal*/
 	private _defaultPhysicsMemory: number = 16;
 	/**@internal*/
@@ -43,6 +57,8 @@ export class Config3D implements IClone {
 	octreeMinNodeSize: number = 2.0;
 	/** 八叉树松散值。*/
 	octreeLooseness: number = 1.25;
+	
+
 	/** 
 	 * 是否开启视锥裁剪调试。
 	 * 如果开启八叉树裁剪,使用红色绘制高层次八叉树节点包围盒,使用蓝色绘制低层次八叉节点包围盒,精灵包围盒和八叉树节点包围盒颜色一致,但Alpha为非透明。如果视锥完全包含八叉树节点,八叉树节点包围盒和精灵包围盒变为蓝色,同样精灵包围盒的Alpha为非透明。
@@ -51,7 +67,8 @@ export class Config3D implements IClone {
 	debugFrustumCulling: boolean = false;
 	/** PBR材质渲染质量。*/
 	pbrRenderQuality: PBRRenderQuality = PBRRenderQuality.High;
-
+	/** 是否使用CANNONJS物理引擎*/
+	isUseCannonPhysicsEngine:boolean = false;
 	/**
 	 * 默认物理功能初始化内存，单位为M。
 	 */

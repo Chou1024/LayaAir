@@ -139,7 +139,8 @@ export class Loader extends EventDispatcher {
 	_propertyParams: any;
 	/**@internal */
 	_createCache: boolean;
-
+	/**@internal 原始加载类型 */
+	_originType:string;
 
 	/**
 	 * 加载资源。加载错误会派发 Event.ERROR 事件，参数为错误信息。
@@ -236,7 +237,7 @@ export class Loader extends EventDispatcher {
 	 * onload、onprocess、onerror必须写在本类
 	 */
 	private _loadHttpRequest(url: string, contentType: string, onLoadCaller: Object, onLoad: Function | null, onProcessCaller: any, onProcess: Function | null, onErrorCaller: any, onError: Function): void {
-		if (Browser.onVVMiniGame) {
+		if (Browser.onVVMiniGame||Browser.onHWMiniGame) {
 			this._http = new HttpRequest();//临时修复vivo复用xmlhttprequest的bug
 		} else {
 			if (!this._http)
@@ -305,51 +306,18 @@ export class Loader extends EventDispatcher {
 		var _this = this;
 		if(isformatURL)
 			url = URL.formatURL(url);
-		var onLoaded: Function;
 		var onError: Function = function (): void {
 			_this.event(Event.ERROR, "Load image failed");
 		}
 		if (this._type === "nativeimage") {
-			onLoaded = (image: any) => {
-				this.onLoaded(image);
-			}
-			this._loadHtmlImage(url, this, onLoaded, this, onError);
+			this._loadHtmlImage(url, this, this.onLoaded, this, onError);
 		} else {
-			var ext: string = Utils.getFileExtension(url);
-			if (ext === "ktx" || ext === "pvr") {
-				onLoaded = function (imageData: any): void {
-					let format: TextureFormat;
-					switch (ext) {
-						case "ktx":
-							format = TextureFormat.ETC1RGB;
-							break;
-						case "pvr":
-							format = TextureFormat.PVRTCRGBA_4BPPV;
-							break;
-						default: {
-							console.error('unknown format', ext);
-							return;
-						}
-					}
-					var tex = new Texture2D(0, 0, format, false, false);
-					tex.wrapModeU = WarpMode.Clamp;
-					tex.wrapModeV = WarpMode.Clamp;
-					tex.setCompressData(imageData);
-					tex._setCreateURL(url);
-					_this.onLoaded(tex);
-				};
-				this._loadHttpRequest(url, Loader.BUFFER, this, onLoaded, null, null, this, onError);
-			} else {
-				onLoaded = function (image: any): void {
-					var tex: Texture2D = new Texture2D(image.width, image.height, 1, false, false);
-					tex.wrapModeU = WarpMode.Clamp;
-					tex.wrapModeV = WarpMode.Clamp;
-					tex.loadImageSource(image, true);
-					tex._setCreateURL(url);
-					_this.onLoaded(tex);
-				}
-				this._loadHtmlImage(url, this, onLoaded, this, onError);
-			}
+			
+			 var ext: string = Utils.getFileExtension(url);
+			 if (ext === "ktx" || ext === "pvr") 
+				this._loadHttpRequest(url, Loader.BUFFER, this, this.onLoaded, this, this.onProgress, this, this.onError);
+			else
+				this._loadHtmlImage(url, this, this.onLoaded, this, onError);
 		}
 	}
 
@@ -383,6 +351,7 @@ export class Loader extends EventDispatcher {
 	/**@private */
 	protected onProgress(value: number): void {
 		if (this._type === Loader.ATLAS) this.event(Event.PROGRESS, value * 0.3);
+		else if(this._originType == Loader.HIERARCHY) this.event(Event.PROGRESS,value /3);
 		else this.event(Event.PROGRESS, value);
 	}
 
@@ -404,14 +373,54 @@ export class Loader extends EventDispatcher {
 			this.parsePLFData(data);
 			this.complete(data);
 		} else if (type === Loader.IMAGE) {
-			var tex: Texture = new Texture(data);
-			tex.url = this._url;
-			this.complete(tex);
-		} else if (type === Loader.SOUND || type === "htmlimage" || type === "nativeimage") {
+			let tex:Texture2D;
+			//可能有另外一种情况
+			if (data instanceof ArrayBuffer) {
+				var ext: string = Utils.getFileExtension(this._url);
+				let format: TextureFormat;
+				switch (ext) {
+					case "ktx":
+						format = TextureFormat.ETC1RGB;
+						break;
+					case "pvr":
+						format = TextureFormat.PVRTCRGBA_4BPPV;
+						break;
+					default: {
+						console.error('unknown format', ext);
+						return;
+					}
+				}
+				tex = new Texture2D(0, 0, format, false, false);
+				tex.wrapModeU = WarpMode.Clamp;
+				tex.wrapModeV = WarpMode.Clamp;
+				tex.setCompressData(data);
+				tex._setCreateURL(this.url);
+			} else if(!(data instanceof Texture2D)){
+				tex = new Texture2D(data.width, data.height, 1, false, false);
+				tex.wrapModeU = WarpMode.Clamp;
+				tex.wrapModeV = WarpMode.Clamp;
+				tex.loadImageSource(data, true);
+				tex._setCreateURL(data.src);
+			}else{
+				tex = data;
+			}
+			var texture: Texture = new Texture(tex);
+			texture.url = this._url;
+			this.complete(texture);
+		
+		} else if (type === Loader.SOUND || type === "nativeimage") {
 			this.complete(data);
-		} else if (type === Loader.ATLAS) {
+		} else if(type === "htmlimage" ){
+			let tex: Texture2D = new Texture2D(data.width, data.height, 1, false, false);
+			tex.wrapModeU = WarpMode.Clamp;
+			tex.wrapModeV = WarpMode.Clamp;
+			tex.loadImageSource(data, true);
+			tex._setCreateURL(data.src);
+			this.complete(tex);
+		}
+		 else if (type === Loader.ATLAS) {
 			//处理图集
-			if (!(data instanceof Texture2D)) {
+			if (data.frames) {
 				var toloadPics: string[] = [];
 				if (!this._data) {
 					this._data = data;
@@ -455,6 +464,15 @@ export class Loader extends EventDispatcher {
 				this.event(Event.PROGRESS, 0.3 + 1 / toloadPics.length * 0.6);
 				return this._loadResourceFilter(Loader.IMAGE, toloadPics.pop() as string);
 			} else {
+				if(!(data instanceof Texture2D))
+				{
+					let tex: Texture2D = new Texture2D(data.width, data.height, 1, false, false);
+					tex.wrapModeU = BaseTexture.WARPMODE_CLAMP;
+					tex.wrapModeV = BaseTexture.WARPMODE_CLAMP;
+					tex.loadImageSource(data, true);
+					tex._setCreateURL(data.src);
+					data = tex;
+				}
 				this._data.pics.push(data);
 				if (this._data.toLoads.length > 0) {
 					this.event(Event.PROGRESS, 0.3 + 1 / this._data.toLoads.length * 0.6);

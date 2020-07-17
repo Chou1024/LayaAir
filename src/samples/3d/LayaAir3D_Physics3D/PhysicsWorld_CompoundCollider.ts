@@ -21,6 +21,7 @@ import { Handler } from "laya/utils/Handler";
 import { Stat } from "laya/utils/Stat";
 import { Laya3D } from "Laya3D";
 import { CameraMoveScript } from "../common/CameraMoveScript";
+import { Config3D } from "Config3D";
 
 export class PhysicsWorld_CompoundCollider {
 	private scene: Scene3D;
@@ -30,7 +31,7 @@ export class PhysicsWorld_CompoundCollider {
 			Laya.stage.scaleMode = Stage.SCALE_FULL;
 			Laya.stage.screenMode = Stage.SCREEN_NONE;
 			Stat.show();
-
+			Config3D.useCannonPhysics = false;
 			this.scene = <Scene3D>Laya.stage.addChild(new Scene3D());
 
 			this.camera = <Camera>this.scene.addChild(new Camera(0, 0.1, 100));
@@ -97,9 +98,9 @@ export class PhysicsWorld_CompoundCollider {
 			var rotationEuler: Vector3 = transform.rotationEuler;
 			rotationEuler.setValue(Math.random() * 360, Math.random() * 360, Math.random() * 360);
 			transform.rotationEuler = rotationEuler;
-			var scale: Vector3 = transform.scale;
+			var scale: Vector3 = transform.getWorldLossyScale();
 			scale.setValue(3, 3, 3);
-			transform.scale = scale;
+			transform.setWorldLossyScale(scale);
 
 
 			var rigidBody: Rigidbody3D = (<Rigidbody3D>table.addComponent(Rigidbody3D));
@@ -155,9 +156,9 @@ export class PhysicsWorld_CompoundCollider {
 			var rotationEuler: Vector3 = transform.rotationEuler;
 			rotationEuler.setValue(Math.random() * 360, Math.random() * 360, Math.random() * 360);
 			transform.rotationEuler = rotationEuler;
-			var scale: Vector3 = transform.scale;
+			var scale: Vector3 = transform.getWorldLossyScale();
 			scale.setValue(0.01, 0.01, 0.01);
-			transform.scale = scale;
+			transform.setWorldLossyScale(scale);
 			object.meshRenderer.material = mat;
 
 			var rigidBody: Rigidbody3D = (<Rigidbody3D>object.addComponent(Rigidbody3D));

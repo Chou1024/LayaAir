@@ -30,6 +30,7 @@ class Main {
         this.isTimeOut = false;
         /**入口 */
         this.start();
+        // this.tstoas("laya\\renders\\RenderSprite.d.ts",null,"laya\\renders");
         // this.tstoas("laya\\ani\\bone\\spine\\SpineSkeletonRenderer.d.ts",null,"laya\\ani\\bone\\spine");
         // this.tstoas("laya\\d3\\core\\Transform3D.d.ts",null,"laya\\d3\\core\\");
         // this.tstoas("laya\\html\\dom\\HTMLElement.d.ts", null, "laya\\html\\dom");
@@ -198,9 +199,6 @@ class Main {
                         console.log("start copy jsc");
                         yield gulp.src("./jsc/**/*.*").pipe(gulp.dest(path.join(this.outfile, this.outfileAS)));
                         console.log("copy success!");
-                        // fs.writeFile("tst.txt",JSON.stringify(testArr),err=>{
-                        //     console.log("end");
-                        // });
                     }));
                 });
             }

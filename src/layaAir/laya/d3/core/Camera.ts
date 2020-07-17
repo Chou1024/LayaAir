@@ -4,11 +4,11 @@ import { Node } from "../../display/Node";
 import { Event } from "../../events/Event";
 import { LayaGL } from "../../layagl/LayaGL";
 import { Render } from "../../renders/Render";
-import { BaseTexture } from "../../resource/BaseTexture";
+import { FilterMode } from "../../resource/FilterMode";
 import { RenderTextureDepthFormat, RenderTextureFormat } from "../../resource/RenderTextureFormat";
+import { SystemUtils } from "../../webgl/SystemUtils";
 import { WebGLContext } from "../../webgl/WebGLContext";
 import { PostProcess } from "../component/PostProcess";
-import { FrustumCulling } from "../graphics/FrustumCulling";
 import { Cluster } from "../graphics/renderPath/Cluster";
 import { BoundFrustum } from "../math/BoundFrustum";
 import { Matrix4x4 } from "../math/Matrix4x4";
@@ -21,18 +21,19 @@ import { Viewport } from "../math/Viewport";
 import { RenderTexture } from "../resource/RenderTexture";
 import { Shader3D } from "../shader/Shader3D";
 import { ShaderData } from "../shader/ShaderData";
-import { ParallelSplitShadowMap } from "../shadowMap/ParallelSplitShadowMap";
 import { Picker } from "../utils/Picker";
 import { BaseCamera } from "./BaseCamera";
+import { DirectionLight } from "./light/DirectionLight";
+import { ShadowMode } from "./light/ShadowMode";
 import { BlitScreenQuadCMD } from "./render/command/BlitScreenQuadCMD";
 import { CommandBuffer } from "./render/command/CommandBuffer";
 import { RenderContext3D } from "./render/RenderContext3D";
-import { RenderQueue } from "./render/RenderQueue";
 import { Scene3D } from "./scene/Scene3D";
 import { Scene3DShaderDeclaration } from "./scene/Scene3DShaderDeclaration";
 import { Transform3D } from "./Transform3D";
-import { FilterMode } from "../../resource/FilterMode";
-import { SystemUtils } from "../../webgl/SystemUtils";
+import { ILaya3D } from "../../../ILaya3D";
+import { ShadowUtils } from "./light/ShadowUtils";
+import { SpotLight } from "./light/SpotLight";
 
 /**
  * 相机清除标记。
@@ -315,7 +316,7 @@ export class Camera extends BaseCamera {
 		this._viewport = new Viewport(0, 0, 0, 0);
 		this._normalizedViewport = new Viewport(0, 0, 1, 1);
 		this._aspectRatio = aspectRatio;
-		this._boundFrustum = new BoundFrustum(Matrix4x4.DEFAULT);
+		this._boundFrustum = new BoundFrustum(new Matrix4x4());
 		if (Render.supportWebGLPlusCulling)
 			this._boundFrustumBuffer = new Float32Array(24);
 
@@ -551,41 +552,49 @@ export class Camera extends BaseCamera {
 		var scene: Scene3D = context.scene = <Scene3D>this._scene;
 		context.pipelineMode = "Forward";
 
-		if (needInternalRT)
-			this._internalRenderTexture = RenderTexture.createFromPool(viewport.width, viewport.height, this._getRenderTextureFormat(), RenderTextureDepthFormat.DEPTH_16, FilterMode.Bilinear);
-		else
+		if (needInternalRT) {
+			this._internalRenderTexture = RenderTexture.createFromPool(viewport.width, viewport.height, this._getRenderTextureFormat(), RenderTextureDepthFormat.DEPTH_16);
+			this._internalRenderTexture.filterMode = FilterMode.Bilinear;
+		}
+		else {
 			this._internalRenderTexture = null;
-		if (scene.parallelSplitShadowMaps[0]) {//TODO:SM
-			context.pipelineMode = "ShadowCaster";
-			ShaderData.setRuntimeValueMode(false);
-			var parallelSplitShadowMap: ParallelSplitShadowMap = scene.parallelSplitShadowMaps[0];
-			parallelSplitShadowMap._calcAllLightCameraInfo(this);
-
-			for (var i: number = 0, n: number = parallelSplitShadowMap.shadowMapCount; i < n; i++) {
-				var smCamera: Camera = parallelSplitShadowMap.cameras[i];
-				context.camera = smCamera;
-				FrustumCulling.renderObjectCulling(smCamera, scene, context, shader, replacementTag, true);
-
-				var shadowMap: RenderTexture = parallelSplitShadowMap.cameras[i + 1].renderTarget;
-				shadowMap._start();
-				RenderContext3D._instance.invertY = false;//阴影不需要翻转,临时矫正，待重构处理
-				context.camera = smCamera;
-				Camera._updateMark++;
-				context.viewport = smCamera.viewport;
-				smCamera._prepareCameraToRender();
-				smCamera._applyViewProject(context, smCamera.viewMatrix, smCamera.projectionMatrix);
-				scene._clear(gl, context);
-				var queue: RenderQueue = scene._opaqueQueue;//阴影均为非透明队列
-				// gl.colorMask(false,false,false,false);
-				queue._render(context);
-				// gl.colorMask(true,true,true,true);
-				shadowMap._end();
-			}
-			ShaderData.setRuntimeValueMode(true);
-			context.pipelineMode = "Forward";
 		}
 
+		//render shadowMap
+		var shadowCasterPass;
+		var mainDirectLight: DirectionLight = scene._mainDirectionLight;
+		var needShadowCasterPass: boolean = mainDirectLight && mainDirectLight.shadowMode !== ShadowMode.None && ShadowUtils.supportShadow();
+		if (needShadowCasterPass) {
+			scene._shaderValues.removeDefine(Scene3DShaderDeclaration.SHADERDEFINE_SHADOW_SPOT)
+			scene._shaderValues.addDefine(Scene3DShaderDeclaration.SHADERDEFINE_SHADOW);
+			shadowCasterPass = ILaya3D.Scene3D._shadowCasterPass;
+			shadowCasterPass.update(this, mainDirectLight,ILaya3D.ShadowLightType.DirectionLight);
+			shadowCasterPass.render(context, scene,ILaya3D.ShadowLightType.DirectionLight);
+		}
+		else {
+			scene._shaderValues.removeDefine(Scene3DShaderDeclaration.SHADERDEFINE_SHADOW);
+		}
+		var spotMainLight:SpotLight = scene._mainSpotLight;
+		var spotneedShadowCasterPass:boolean = spotMainLight && spotMainLight.shadowMode !== ShadowMode.None && ShadowUtils.supportShadow();
+		if(spotneedShadowCasterPass) {
+			scene._shaderValues.removeDefine(Scene3DShaderDeclaration.SHADERDEFINE_SHADOW);
+			scene._shaderValues.addDefine(Scene3DShaderDeclaration.SHADERDEFINE_SHADOW_SPOT);
+			shadowCasterPass = ILaya3D.Scene3D._shadowCasterPass;
+			shadowCasterPass.update(this,spotMainLight,ILaya3D.ShadowLightType.SpotLight);
+			shadowCasterPass.render(context,scene,ILaya3D.ShadowLightType.SpotLight);
+		}
+		else{
+			scene._shaderValues.removeDefine(Scene3DShaderDeclaration.SHADERDEFINE_SHADOW_SPOT);
+		}
+		if(needShadowCasterPass)
+			scene._shaderValues.addDefine(Scene3DShaderDeclaration.SHADERDEFINE_SHADOW);
+		if(spotneedShadowCasterPass)	
+			scene._shaderValues.addDefine(Scene3DShaderDeclaration.SHADERDEFINE_SHADOW_SPOT);
+
+
+
 		context.camera = this;
+		context.cameraShaderValue = this._shaderValues;
 		Camera._updateMark++;
 		scene._preRenderScript();//TODO:duo相机是否重复
 		//TODO:webgl2 should use blitFramebuffer
@@ -593,7 +602,8 @@ export class Camera extends BaseCamera {
 		//if need internal RT and no off screen RT and clearFlag is DepthOnly or Nothing, should grab the backBuffer
 		if (needInternalRT && !this._offScreenRenderTexture && (this.clearFlag == CameraClearFlags.DepthOnly || this.clearFlag == CameraClearFlags.Nothing)) {
 			if (this._enableHDR) {//internal RT is HDR can't directly copy
-				var grabTexture: RenderTexture = RenderTexture.createFromPool(viewport.width, viewport.height, RenderTextureFormat.R8G8B8, RenderTextureDepthFormat.DEPTH_16, FilterMode.Bilinear);
+				var grabTexture: RenderTexture = RenderTexture.createFromPool(viewport.width, viewport.height, RenderTextureFormat.R8G8B8, RenderTextureDepthFormat.DEPTH_16);
+				grabTexture.filterMode = FilterMode.Bilinear;
 				WebGLContext.bindTexture(gl, gl.TEXTURE_2D, grabTexture._getSource());
 				gl.copyTexSubImage2D(gl.TEXTURE_2D, 0, 0, 0, viewport.x, RenderContext3D.clientHeight - (viewport.y + viewport.height), viewport.width, viewport.height);
 				var blit: BlitScreenQuadCMD = BlitScreenQuadCMD.create(grabTexture, this._internalRenderTexture);
@@ -634,6 +644,9 @@ export class Camera extends BaseCamera {
 			}
 			RenderTexture.recoverToPool(this._internalRenderTexture);
 		}
+
+		if (needShadowCasterPass||spotneedShadowCasterPass)
+			shadowCasterPass.cleanUp();
 	}
 
 

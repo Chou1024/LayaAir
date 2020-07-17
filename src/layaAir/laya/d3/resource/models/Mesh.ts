@@ -43,6 +43,10 @@ export class skinnedMatrixCache {
 export class Mesh extends Resource implements IClone {
 	/**Mesh资源。*/
 	static MESH: string = "MESH";
+	
+	static MESH_INSTANCEBUFFER_TYPE_NORMAL:number = 0;
+
+	static MESH_INSTANCEBUFFER_TYPE_SIMPLEANIMATOR:number = 1;
 
 	/** @internal */
 	private _tempVector30: Vector3 = new Vector3()
@@ -73,7 +77,7 @@ export class Mesh extends Resource implements IClone {
 	/**
 	 * 加载网格模板。
 	 * @param url 模板地址。
-	 * @param complete 完成回掉。
+	 * @param complete 完成回调。
 	 */
 	static load(url: string, complete: Handler): void {
 		ILaya.loader.create(url, complete, null, Mesh.MESH);
@@ -96,6 +100,8 @@ export class Mesh extends Resource implements IClone {
 	_bufferState: BufferState = new BufferState();
 	/** @internal */
 	_instanceBufferState: BufferState = new BufferState();
+	/** @internal */
+	_instanceBufferStateType:number = 0;
 	/** @internal */
 	_subMeshes: SubMesh[];
 	/** @internal */
@@ -360,16 +366,25 @@ export class Mesh extends Resource implements IClone {
 		bufferState.applyVertexBuffer(vertexBuffer);
 		bufferState.applyIndexBuffer(indexBuffer);
 		bufferState.unBind();
-
-		var instanceBufferState: BufferState = this._instanceBufferState;
-		instanceBufferState.bind();
-		instanceBufferState.applyVertexBuffer(vertexBuffer);
-		instanceBufferState.applyInstanceVertexBuffer(SubMeshInstanceBatch.instance.instanceWorldMatrixBuffer);
-		instanceBufferState.applyInstanceVertexBuffer(SubMeshInstanceBatch.instance.instanceMVPMatrixBuffer);
-		instanceBufferState.applyIndexBuffer(indexBuffer);
-		instanceBufferState.unBind();
 	}
 
+	/**
+	 * @internal
+	 */
+	_setInstanceBuffer(instanceBufferStateType:number){
+		var instanceBufferState: BufferState = this._instanceBufferState;
+		instanceBufferState.bind();
+		instanceBufferState.applyVertexBuffer(this._vertexBuffer);
+		instanceBufferState.applyInstanceVertexBuffer(SubMeshInstanceBatch.instance.instanceWorldMatrixBuffer);
+		instanceBufferState.applyInstanceVertexBuffer(SubMeshInstanceBatch.instance.instanceMVPMatrixBuffer);
+		switch(instanceBufferStateType){
+			case Mesh.MESH_INSTANCEBUFFER_TYPE_SIMPLEANIMATOR:
+				instanceBufferState.applyInstanceVertexBuffer(SubMeshInstanceBatch.instance.instanceSimpleAnimatorBuffer)
+			break;
+		}
+		instanceBufferState.applyIndexBuffer(this._indexBuffer);
+		instanceBufferState.unBind();
+	}
 
 	/**
 	 * @internal
@@ -750,14 +765,18 @@ export class Mesh extends Resource implements IClone {
 
 		var i: number;
 		var boneNames: string[] = this._boneNames;
-		var destBoneNames: string[] = destMesh._boneNames = [];
-		for (i = 0; i < boneNames.length; i++)
-			destBoneNames[i] = boneNames[i];
+		if (boneNames) {
+			var destBoneNames: string[] = destMesh._boneNames = [];
+			for (i = 0; i < boneNames.length; i++)
+				destBoneNames[i] = boneNames[i];
+		}
 
 		var inverseBindPoses: Matrix4x4[] = this._inverseBindPoses;
-		var destInverseBindPoses: Matrix4x4[] = destMesh._inverseBindPoses = [];
-		for (i = 0; i < inverseBindPoses.length; i++)
-			destInverseBindPoses[i] = inverseBindPoses[i];
+		if (inverseBindPoses) {
+			var destInverseBindPoses: Matrix4x4[] = destMesh._inverseBindPoses = [];
+			for (i = 0; i < inverseBindPoses.length; i++)
+				destInverseBindPoses[i] = inverseBindPoses[i];
+		}
 
 		var cacheLength: number = this._skinnedMatrixCaches.length;
 		destMesh._skinnedMatrixCaches.length = cacheLength;

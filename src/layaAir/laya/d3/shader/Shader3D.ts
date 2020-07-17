@@ -5,6 +5,7 @@ import { ShaderDefine } from "./ShaderDefine";
 import { ShaderPass } from "./ShaderPass";
 import { ShaderVariant, ShaderVariantCollection } from "./ShaderVariantCollection";
 import { SubShader } from "./SubShader";
+import { LayaGL } from "../../layagl/LayaGL";
 
 /**
  * <code>Shader3D</code> 类用于创建Shader3D。
@@ -56,6 +57,10 @@ export class Shader3D {
 
 	/**@internal */
 	static SHADERDEFINE_LEGACYSINGALLIGHTING: ShaderDefine;
+	/**@internal 图形API为WebGL1.0/OPENGLES2.0。*/
+	static SHADERDEFINE_GRAPHICS_API_GLES2: ShaderDefine;
+	/**@internal 图形API为WebGL2.0/OPENGLES3.0。*/
+	static SHADERDEFINE_GRAPHICS_API_GLES3: ShaderDefine;
 
 	/**@internal */
 	private static _propertyNameCounter: number = 0;
@@ -75,7 +80,7 @@ export class Shader3D {
 
 
 	/**是否开启调试模式。 */
-	static debugMode: boolean = true;
+	static debugMode: boolean = false;
 	/**调试着色器变种集合。 */
 	static readonly debugShaderVariantCollection: ShaderVariantCollection = new ShaderVariantCollection();
 
@@ -145,6 +150,28 @@ export class Shader3D {
 	}
 
 	/**
+	 * 通过宏属性动态修改AttributeMap
+	 * @param defineString 
+	 * @param attributeMap 
+	 */
+	static getAttributeMapByDefine(defineString:string[],attributeMap:any):any{
+		var newAttributeMap:any = {};
+		for(var value in attributeMap){
+			newAttributeMap[value] = attributeMap[value];
+		}	
+		for ( var i = 0, n: number = defineString.length; i < n; i++) {
+			var def: string = defineString[i];
+			switch(def){
+				case "SIMPLEBONE":
+				newAttributeMap["a_SimpleTextureParams"] = attributeMap["a_Texcoord1"];
+				delete newAttributeMap["a_Texcoord1"];
+				break;
+			}
+		}
+		return newAttributeMap;
+	}
+
+	/**
 	 * 添加函数库引用。
 	 * @param fileName 文件名字。
 	 * @param txt 文件内容
@@ -172,8 +199,6 @@ export class Shader3D {
 					compileDefineDatas.clear();
 					for (var i: number = 0, n: number = defineNames.length; i < n; i++)
 						compileDefineDatas.add(Shader3D.getDefineByName(defineNames[i]));
-
-					(Config3D._config._multiLighting) || (compileDefineDatas.add(Shader3D.SHADERDEFINE_LEGACYSINGALLIGHTING));
 					pass.withCompile(compileDefineDatas);
 				} else {
 					console.warn("Shader3D: unknown passIndex.");
@@ -267,8 +292,6 @@ export class Shader3D {
 					for (var i: number = 0, n: number = defineMask.length; i < n; i++)
 						mask.push(defineMask[i]);
 					compileDefineDatas._length = defineMask.length;
-
-					(Config3D._config._multiLighting) || (compileDefineDatas.add(Shader3D.SHADERDEFINE_LEGACYSINGALLIGHTING));
 					pass.withCompile(compileDefineDatas);
 
 				} else {
